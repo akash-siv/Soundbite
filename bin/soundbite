@@ -1,0 +1,296 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# Soundbite: Lightweight audio snippet capture tool for Linux / PipeWire
+# [Decided 2026-10-05]
+#
+# Modes:
+#   desktop : Captures system audio / speakers / loopback (@DEFAULT_SINK@.monitor)
+#   mic     : Captures default microphone (@DEFAULT_SOURCE@)
+#   both    : Captures both mixed together using ffmpeg amix
+# ==============================================================================
+
+set -eo pipefail
+
+CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/soundbite"
+CONFIG_FILE="$CONFIG_DIR/config.env"
+
+# Fallback to legacy config if present
+if [[ ! -f "$CONFIG_FILE" && -f "${XDG_CONFIG_HOME:-$HOME/.config}/audio-capture/config.env" ]]; then
+    CONFIG_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/audio-capture/config.env"
+fi
+
+# Load configuration if present
+if [[ -f "$CONFIG_FILE" ]]; then
+    # shellcheck source=/dev/null
+    source "$CONFIG_FILE"
+fi
+
+# Configuration defaults
+APP_NAME="Soundbite"
+FILE_PREFIX="${AUDIO_FILE_PREFIX:-Soundbite}"
+CAPTURE_DIR="${AUDIO_CAPTURE_DIR:-$HOME/Music/AudioCaptures}"
+AUDIO_FORMAT="${AUDIO_FORMAT:-mp3}"
+AUDIO_BITRATE="${AUDIO_BITRATE:-192k}"
+PLAY_SOUNDS="${PLAY_SOUNDS:-true}"
+SEND_NOTIFICATIONS="${SEND_NOTIFICATIONS:-true}"
+COPY_TO_CLIPBOARD="${COPY_TO_CLIPBOARD:-true}"
+
+RUNTIME_DIR="${XDG_RUNTIME_DIR:-/tmp}/soundbite"
+mkdir -p "$RUNTIME_DIR"
+STATE_FILE="$RUNTIME_DIR/recording.state"
+
+play_cue() {
+    local sound_name="$1"
+    if [[ "$PLAY_SOUNDS" == "true" ]] && command -v canberra-gtk-play &>/dev/null; then
+        canberra-gtk-play -i "$sound_name" 2>/dev/null &
+    fi
+}
+
+notify() {
+    local title="$1"
+    local body="$2"
+    local icon="${3:-media-record}"
+    local timeout="${4:-3000}"
+
+    if [[ "$SEND_NOTIFICATIONS" == "true" ]] && command -v notify-send &>/dev/null; then
+        notify-send -a "$APP_NAME" -i "$icon" -t "$timeout" "$title" "$body" 2>/dev/null &
+    fi
+}
+
+format_duration() {
+    local seconds="$1"
+    local mins=$((seconds / 60))
+    local secs=$((seconds % 60))
+    printf "%02d:%02d" "$mins" "$secs"
+}
+
+is_active() {
+    if [[ -f "$STATE_FILE" ]]; then
+        # shellcheck source=/dev/null
+        source "$STATE_FILE"
+        if [[ -n "$PID" ]] && kill -0 "$PID" 2>/dev/null; then
+            return 0
+        fi
+    fi
+    return 1
+}
+
+start_recording() {
+    local mode="${1:-desktop}"
+
+    if is_active; then
+        echo "A recording is already in progress (PID: $PID, Mode: $MODE)."
+        return 1
+    fi
+
+    # Ensure output directory exists
+    mkdir -p "$CAPTURE_DIR"
+
+    local timestamp
+    timestamp="$(date +"%Y-%m-%d_%H-%M-%S")"
+    local outfile="$CAPTURE_DIR/${FILE_PREFIX}_${timestamp}_${mode}.${AUDIO_FORMAT}"
+
+    local input_args=()
+    local label=""
+
+    case "$mode" in
+        desktop)
+            label="Desktop Audio"
+            input_args=(-f pulse -i "@DEFAULT_SINK@.monitor")
+            ;;
+        mic)
+            label="Microphone"
+            input_args=(-f pulse -i "@DEFAULT_SOURCE@")
+            ;;
+        both)
+            label="Desktop + Microphone"
+            input_args=(
+                -f pulse -i "@DEFAULT_SINK@.monitor"
+                -f pulse -i "@DEFAULT_SOURCE@"
+                -filter_complex "amix=inputs=2:duration=longest"
+            )
+            ;;
+        *)
+            echo "Unknown mode: $mode. Use desktop, mic, or both."
+            exit 1
+            ;;
+    esac
+
+    local codec_args=()
+    case "$AUDIO_FORMAT" in
+        mp3)
+            codec_args=(-c:a libmp3lame -b:a "$AUDIO_BITRATE")
+            ;;
+        wav)
+            codec_args=(-c:a pcm_s16le)
+            ;;
+        flac)
+            codec_args=(-c:a flac)
+            ;;
+        opus|ogg)
+            codec_args=(-c:a libopus -b:a "$AUDIO_BITRATE")
+            ;;
+        *)
+            codec_args=(-c:a libmp3lame -b:a "$AUDIO_BITRATE")
+            ;;
+    esac
+
+    # Launch ffmpeg in background
+    nohup ffmpeg -nostdin -loglevel error -y \
+        "${input_args[@]}" \
+        "${codec_args[@]}" \
+        "$outfile" </dev/null >/dev/null 2>&1 &
+
+    local ffmpeg_pid=$!
+
+    # Save state
+    cat <<EOF > "$STATE_FILE"
+PID=$ffmpeg_pid
+MODE=$mode
+LABEL="$label"
+OUTFILE="$outfile"
+START_TIME=$(date +%s)
+EOF
+
+    play_cue "camera-shutter"
+    notify "🔴 $APP_NAME Started" "Capturing: $label\nPress shortcut again to finish." "media-record" 3000
+    echo "Started recording [$mode] -> $outfile (PID: $ffmpeg_pid)"
+}
+
+stop_recording() {
+    if ! is_active; then
+        echo "No active recording to stop."
+        rm -f "$STATE_FILE"
+        return 0
+    fi
+
+    # Read state
+    # shellcheck source=/dev/null
+    source "$STATE_FILE"
+
+    # Stop ffmpeg cleanly via SIGINT so headers/trailers are written
+    kill -INT "$PID" 2>/dev/null || true
+
+    # Wait briefly for ffmpeg to exit
+    local timeout=50
+    while kill -0 "$PID" 2>/dev/null && (( timeout > 0 )); do
+        sleep 0.05
+        (( timeout-- ))
+    done
+
+    # Remove state file
+    rm -f "$STATE_FILE"
+
+    # Verify file
+    if [[ ! -s "$OUTFILE" ]]; then
+        notify "$APP_NAME Failed" "Output audio file was empty or not created." "dialog-error" 4000
+        rm -f "$OUTFILE"
+        return 1
+    fi
+
+    local end_time
+    end_time="$(date +%s)"
+    local duration=$(( end_time - START_TIME ))
+    local duration_formatted
+    duration_formatted="$(format_duration "$duration")"
+
+    # Clipboard copy
+    if [[ "$COPY_TO_CLIPBOARD" == "true" ]] && command -v wl-copy &>/dev/null; then
+        printf "%s" "$OUTFILE" | wl-copy 2>/dev/null || true
+    fi
+
+    play_cue "complete"
+
+    # Interactive KDE notification with actions (non-blocking)
+    if [[ "$SEND_NOTIFICATIONS" == "true" ]] && command -v notify-send &>/dev/null; then
+        (
+            ACTION=$(notify-send -a "$APP_NAME" \
+                -i audio-headphones \
+                -t 8000 \
+                "✅ $APP_NAME Saved ($duration_formatted)" \
+                "$(basename "$OUTFILE")\n(Path copied to clipboard)" \
+                -A "open=Open Folder" \
+                -A "play=Play Audio" 2>/dev/null || true)
+
+            if [[ "$ACTION" == "open" ]]; then
+                xdg-open "$(dirname "$OUTFILE")" &>/dev/null &
+            elif [[ "$ACTION" == "play" ]]; then
+                xdg-open "$OUTFILE" &>/dev/null &
+            fi
+        ) &
+    fi
+
+    echo "Saved: $OUTFILE ($duration_formatted)"
+}
+
+cancel_recording() {
+    if ! is_active; then
+        echo "No active recording to cancel."
+        rm -f "$STATE_FILE"
+        return 0
+    fi
+
+    # shellcheck source=/dev/null
+    source "$STATE_FILE"
+
+    kill -KILL "$PID" 2>/dev/null || true
+    rm -f "$STATE_FILE"
+    rm -f "$OUTFILE"
+
+    play_cue "dialog-warning"
+    notify "$APP_NAME Canceled" "Captured audio was discarded." "edit-delete" 3000
+    echo "Recording canceled and file deleted."
+}
+
+toggle_recording() {
+    local target_mode="${1:-desktop}"
+    if is_active; then
+        stop_recording
+    else
+        start_recording "$target_mode"
+    fi
+}
+
+show_status() {
+    if is_active; then
+        # shellcheck source=/dev/null
+        source "$STATE_FILE"
+        local current_time
+        current_time="$(date +%s)"
+        local elapsed=$(( current_time - START_TIME ))
+        echo "Status: RECORDING"
+        echo "Mode: $MODE ($LABEL)"
+        echo "PID: $PID"
+        echo "Duration: $(format_duration "$elapsed")"
+        echo "Output: $OUTFILE"
+    else
+        echo "Status: IDLE"
+    fi
+}
+
+# --- CLI Dispatcher ---
+COMMAND="${1:-toggle}"
+shift || true
+ARG="${1:-desktop}"
+
+case "$COMMAND" in
+    toggle)
+        toggle_recording "$ARG"
+        ;;
+    start)
+        start_recording "$ARG"
+        ;;
+    stop)
+        stop_recording
+        ;;
+    cancel)
+        cancel_recording
+        ;;
+    status)
+        show_status
+        ;;
+    *)
+        echo "Usage: soundbite {toggle|start|stop|cancel|status} [desktop|mic|both]"
+        exit 1
+        ;;
+esac

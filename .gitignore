@@ -1,0 +1,15 @@
+# Audio files
+*.mp3
+*.wav
+*.ogg
+*.flac
+*.m4a
+
+# State & runtime files
+*.state
+*.pid
+
+# Temporary & editor files
+*~
+*.swp
+.DS_Store

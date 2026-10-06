@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Soundbite: Microphone
+Comment=Toggle Soundbite audio capture for microphone (voice notes)
+Exec=soundbite toggle mic
+Icon=audio-input-microphone
+Terminal=false
+Categories=AudioVideo;Audio;Recorder;
+Keywords=audio;record;capture;sound;microphone;voice;soundbite;
+StartupNotify=false

@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Soundbite: Desktop + Mic
+Comment=Toggle Soundbite audio capture for desktop sound and microphone mixed
+Exec=soundbite toggle both
+Icon=media-record
+Terminal=false
+Categories=AudioVideo;Audio;Recorder;
+Keywords=audio;record;capture;sound;mixed;meeting;soundbite;
+StartupNotify=false

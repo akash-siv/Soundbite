@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Soundbite: Desktop Audio
+Comment=Toggle Soundbite audio capture for desktop sound (what you hear)
+Exec=soundbite toggle desktop
+Icon=audio-headphones
+Terminal=false
+Categories=AudioVideo;Audio;Recorder;
+Keywords=audio;record;capture;sound;desktop;speaker;soundbite;
+StartupNotify=false
