@@ -22,7 +22,7 @@ On modern desktop environments:
 - **Retroactive vs Forward Capture `[Decided 2026-10-05]`:** User specified forward snippet capture only (toggle recording). Rolling retroactive buffer was discarded to minimize memory footprint and unnecessary background I/O.
 - **Workflow:**
   1. Trigger hotkey $\rightarrow$ Audio capture starts immediately in background via `soundbite toggle <mode>`.
-  2. Sound cue (`camera-shutter.oga`) plays and desktop notification appears (*"🔴 Soundbite Started"*).
+  2. A persistent desktop notification appears (*"🔴 Soundbite Recording"*). No start sound is played, so capture begins immediately and the cue is not recorded.
   3. User finishes talking or media passage ends.
   4. Trigger hotkey again $\rightarrow$ Background process terminates cleanly via `SIGINT`, file headers flush, audio finishes muxing.
   5. File saved to `~/Music/AudioCaptures/Soundbite_<Timestamp>_<Mode>.mp3`.

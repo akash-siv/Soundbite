@@ -50,7 +50,7 @@ In modern desktop workflows, taking a screenshot or copying text takes less than
   *(e.g., `~/Music/AudioCaptures/Soundbite_2026-10-05_20-13-44_desktop.mp3`)*
 * **Automatic Clipboard Integration:** Instantly copies the saved clip to your Wayland clipboard (`wl-copy`), ready to paste (`Ctrl + V`) as a file into a chat, email, or folder. A config option copies the plain path instead.
 * **Tactile Audio & Visual Feedback:**
-  * Plays a `camera-shutter` audio cue when recording begins.
+  * Starts capturing the instant you press the shortcut, with no start sound (it would delay the capture and end up in the clip).
   * Plays a `complete` chime cue when recording stops.
   * Shows a persistent **"Recording"** notification for as long as a capture is running, so a live microphone is never forgotten. It is sent as a critical notification, so it also appears in Do Not Disturb mode.
   * Replaces it on stop with a notification offering interactive **"Open Folder"** and **"Play Audio"** action buttons.
@@ -120,7 +120,7 @@ After running `./install.sh`, you can bind Soundbite to global hotkeys in Fedora
 5. Click **Apply** in the bottom right corner of System Settings.
 
 > **How it works in practice:**
-> 1. Press `Meta + Shift + C` $\rightarrow$ You hear a subtle shutter click and a "Recording" notification stays on screen until you stop.
+> 1. Press `Meta + Shift + C` $\rightarrow$ Recording starts immediately and a "Recording" notification stays on screen until you stop.
 > 2. Let the audio play (or speak into your mic).
 > 3. Press `Meta + Shift + C` again $\rightarrow$ A chime sounds, the MP3 is saved in `~/Music/AudioCaptures/`, and the clip is copied to your clipboard ready to paste!
 
@@ -180,7 +180,7 @@ AUDIO_FORMAT="mp3"
 # Audio bitrate for compressed formats (e.g. 192k, 256k, 320k)
 AUDIO_BITRATE="192k"
 
-# Sound cues on start and stop (true / false)
+# Sound cues on stop and cancel (true / false)
 PLAY_SOUNDS="true"
 
 # Desktop notifications (true / false)
@@ -269,4 +269,4 @@ If you modify these files, run `./install.sh` again to update your desktop syste
 | **"Soundbite Failed" notification** | `ffmpeg` could not start or wrote no audio | Read the reason in the notification, or see `$XDG_RUNTIME_DIR/soundbite/ffmpeg.log`. |
 | **Recording works but no "Saved" popup** | Do Not Disturb is on, which hides normal notifications | The clip is still saved and copied. Turn off Do Not Disturb, or check the notification history. |
 | **Shortcut does nothing** | Installed copy is missing or outdated | Run `./install.sh` again from this repository. |
-| **Audio shutter sound missing** | `libcanberra-gtk3` sound theme not found | Run `sudo dnf install libcanberra-gtk3 sound-theme-freedesktop`. |
+| **Stop chime missing** | `libcanberra-gtk3` sound theme not found | Run `sudo dnf install libcanberra-gtk3 sound-theme-freedesktop`. |

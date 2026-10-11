@@ -23,7 +23,7 @@ When recording stops:
 1. The audio file is saved in `~/Music/AudioCaptures/Soundbite_YYYY-MM-DD_HH-MM-SS_desktop.mp3`.
 2. The clip is automatically copied to your clipboard (`wl-copy`) as a file, or as its path with `CLIPBOARD_MODE="path"`.
 3. A KDE notification appears with **"Open Folder"** and **"Play Audio"** action buttons.
-4. A tactile sound cue plays on start (`camera-shutter`) and stop (`complete`).
+4. A sound cue (`complete`) plays on stop. There is no start sound; capture begins immediately.
 
 ---
 
@@ -45,7 +45,7 @@ To trigger recording instantly with global hotkeys:
 5. Click **Apply**.
 
 > **How it feels in practice:**
-> Hit `Meta+Shift+C` $\rightarrow$ audio shutter click sounds $\rightarrow$ notification appears $\rightarrow$ when the segment ends, hit `Meta+Shift+C` again $\rightarrow$ chime sounds $\rightarrow$ audio is saved to disk and path is in your clipboard ready to paste.
+> Hit `Meta+Shift+C` $\rightarrow$ recording starts immediately $\rightarrow$ notification appears $\rightarrow$ when the segment ends, hit `Meta+Shift+C` again $\rightarrow$ chime sounds $\rightarrow$ audio is saved to disk and the clip is in your clipboard ready to paste.
 
 ---
 

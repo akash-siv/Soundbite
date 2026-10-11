@@ -204,12 +204,8 @@ start_recording() {
     timestamp="$(date +"%Y-%m-%d_%H-%M-%S")"
     local outfile="$CAPTURE_DIR/${FILE_PREFIX}_${timestamp}_${mode}.${AUDIO_FORMAT}"
 
-    # Play the start cue before capturing, otherwise the sink monitor records it
-    if [[ "$mode" != "mic" && "$PLAY_SOUNDS" == "true" ]] && command -v canberra-gtk-play &>/dev/null; then
-        timeout 1 canberra-gtk-play -i camera-shutter 2>/dev/null || true
-    fi
-
-    # Launch ffmpeg in background
+    # Launch ffmpeg in background. No start sound: capture begins immediately
+    # and the sink monitor would otherwise record the cue.
     nohup ffmpeg -nostdin -loglevel error -y \
         "${input_args[@]}" \
         "${codec_args[@]}" \
@@ -244,7 +240,6 @@ start_recording() {
         printf 'NOTIFY_ID=%q\n' "$notify_id"
     } > "$STATE_FILE"
 
-    [[ "$mode" == "mic" ]] && play_cue "camera-shutter"
     echo "Started recording [$mode] -> $outfile (PID: $ffmpeg_pid)"
 }
 
