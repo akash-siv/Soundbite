@@ -21,7 +21,7 @@ soundbite toggle desktop
 
 When recording stops:
 1. The audio file is saved in `~/Music/AudioCaptures/Soundbite_YYYY-MM-DD_HH-MM-SS_desktop.mp3`.
-2. The file path is automatically copied to your clipboard (`wl-copy`).
+2. The clip is automatically copied to your clipboard (`wl-copy`) as a file, or as its path with `CLIPBOARD_MODE="path"`.
 3. A KDE notification appears with **"Open Folder"** and **"Play Audio"** action buttons.
 4. A tactile sound cue plays on start (`camera-shutter`) and stop (`complete`).
 
@@ -38,14 +38,14 @@ To trigger recording instantly with global hotkeys:
 
 | Name | Command | Recommended Shortcut | What it Captures |
 | :--- | :--- | :--- | :--- |
-| **Soundbite: Desktop Audio** | `soundbite toggle desktop` | `Meta + Shift + A` | YouTube, Spotify, browser sound, calls, games |
+| **Soundbite: Desktop Audio** | `soundbite toggle desktop` | `Meta + Shift + C` | YouTube, Spotify, browser sound, calls, games |
 | **Soundbite: Microphone** | `soundbite toggle mic` | `Meta + Shift + V` | Voice memos, speaking ideas out loud |
 | **Soundbite: Desktop + Mic** | `soundbite toggle both` | `Meta + Shift + B` | Both desktop audio and your microphone mixed |
 
 5. Click **Apply**.
 
 > **How it feels in practice:**
-> Hit `Meta+Shift+A` $\rightarrow$ audio shutter click sounds $\rightarrow$ notification appears $\rightarrow$ when the segment ends, hit `Meta+Shift+A` again $\rightarrow$ chime sounds $\rightarrow$ audio is saved to disk and path is in your clipboard ready to paste.
+> Hit `Meta+Shift+C` $\rightarrow$ audio shutter click sounds $\rightarrow$ notification appears $\rightarrow$ when the segment ends, hit `Meta+Shift+C` again $\rightarrow$ chime sounds $\rightarrow$ audio is saved to disk and path is in your clipboard ready to paste.
 
 ---
 
@@ -95,6 +95,9 @@ AUDIO_BITRATE="192k"
 PLAY_SOUNDS="true"
 SEND_NOTIFICATIONS="true"
 COPY_TO_CLIPBOARD="true"
+
+# Clipboard content: "file" (default) or "path"
+CLIPBOARD_MODE="file"
 EOF
 ```
 

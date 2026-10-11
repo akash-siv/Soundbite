@@ -34,6 +34,7 @@ AUDIO_BITRATE="${AUDIO_BITRATE:-192k}"
 PLAY_SOUNDS="${PLAY_SOUNDS:-true}"
 SEND_NOTIFICATIONS="${SEND_NOTIFICATIONS:-true}"
 COPY_TO_CLIPBOARD="${COPY_TO_CLIPBOARD:-true}"
+CLIPBOARD_MODE="${CLIPBOARD_MODE:-file}"
 
 RUNTIME_DIR="${XDG_RUNTIME_DIR:-/tmp}/soundbite"
 mkdir -p -m 700 "$RUNTIME_DIR"
@@ -60,18 +61,45 @@ notify() {
     local icon="${3:-media-record}"
     local timeout="${4:-3000}"
     local replace_id="$5"
+    local urgency="${6:-normal}"
 
     if [[ "$SEND_NOTIFICATIONS" == "true" ]] && command -v notify-send &>/dev/null; then
-        notify-send -a "$APP_NAME" -i "$icon" -t "$timeout" ${replace_id:+-r "$replace_id"} \
+        notify-send -a "$APP_NAME" -i "$icon" -t "$timeout" -u "$urgency" ${replace_id:+-r "$replace_id"} \
             "$title" "$body" 2>/dev/null &
     fi
 }
 
 # Report an error on stderr and as a notification (hotkey runs have no terminal).
 # An optional notification ID replaces the persistent recording indicator.
+# Critical urgency so the failure is still shown in Do Not Disturb mode.
 fail() {
     echo "$1" >&2
-    notify "$APP_NAME Failed" "$1" "dialog-error" 5000 "$2"
+    notify "$APP_NAME Failed" "$1" "dialog-error" 5000 "$2" critical
+}
+
+# Percent-encode a path for use in a file:// URI
+uri_encode_path() {
+    local LC_ALL=C path="$1" out="" c i
+    for (( i = 0; i < ${#path}; i++ )); do
+        c="${path:i:1}"
+        case "$c" in
+            [a-zA-Z0-9/._~-]) out+="$c" ;;
+            *) out+="$(printf '%%%02X' "'$c")" ;;
+        esac
+    done
+    printf '%s' "$out"
+}
+
+# Put the saved clip on the clipboard. "file" copies it the way a file manager
+# does (only a reference; the audio is read when it is pasted), "path" copies
+# the path as plain text.
+copy_to_clipboard() {
+    local file="$1"
+    if [[ "$CLIPBOARD_MODE" == "path" ]]; then
+        printf '%s' "$file" | wl-copy 2>/dev/null && echo "Path"
+    else
+        printf 'file://%s\r\n' "$(uri_encode_path "$file")" | wl-copy -t text/uri-list 2>/dev/null && echo "File"
+    fi
 }
 
 format_duration() {
@@ -197,10 +225,11 @@ start_recording() {
         return 1
     fi
 
-    # Persistent indicator: stays on screen until stop/cancel replaces it
+    # Persistent indicator: stays on screen until stop/cancel replaces it.
+    # Critical urgency so it is shown even in Do Not Disturb mode.
     local notify_id=""
     if [[ "$SEND_NOTIFICATIONS" == "true" ]] && command -v notify-send &>/dev/null; then
-        notify_id="$(notify-send -a "$APP_NAME" -i media-record -t 0 -p \
+        notify_id="$(notify-send -a "$APP_NAME" -i media-record -t 0 -u critical -p \
             "🔴 $APP_NAME Recording" \
             "Capturing: $label (started $(date +%H:%M))\nPress shortcut again to finish." 2>/dev/null || true)"
     fi
@@ -262,10 +291,10 @@ stop_recording() {
 
     # Clipboard copy
     local clipboard_note=""
+    local copied=""
     if [[ "$COPY_TO_CLIPBOARD" == "true" ]] && command -v wl-copy &>/dev/null; then
-        if printf "%s" "$OUTFILE" | wl-copy 2>/dev/null; then
-            clipboard_note="\n(Path copied to clipboard)"
-        fi
+        copied="$(copy_to_clipboard "$OUTFILE" || true)"
+        [[ -n "$copied" ]] && clipboard_note="\n($copied copied to clipboard)"
     fi
 
     play_cue "complete"

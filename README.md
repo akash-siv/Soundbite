@@ -48,11 +48,11 @@ In modern desktop workflows, taking a screenshot or copying text takes less than
   Soundbite_YYYY-MM-DD_HH-MM-SS_<mode>.mp3
   ```
   *(e.g., `~/Music/AudioCaptures/Soundbite_2026-10-05_20-13-44_desktop.mp3`)*
-* **Automatic Clipboard Integration:** Instantly copies the full path of the saved file to your Wayland clipboard (`wl-copy`), ready to paste (`Ctrl + V`) into a terminal, chat, or script.
+* **Automatic Clipboard Integration:** Instantly copies the saved clip to your Wayland clipboard (`wl-copy`), ready to paste (`Ctrl + V`) as a file into a chat, email, or folder. A config option copies the plain path instead.
 * **Tactile Audio & Visual Feedback:**
   * Plays a `camera-shutter` audio cue when recording begins.
   * Plays a `complete` chime cue when recording stops.
-  * Shows a persistent **"Recording"** notification for as long as a capture is running, so a live microphone is never forgotten.
+  * Shows a persistent **"Recording"** notification for as long as a capture is running, so a live microphone is never forgotten. It is sent as a critical notification, so it also appears in Do Not Disturb mode.
   * Replaces it on stop with a notification offering interactive **"Open Folder"** and **"Play Audio"** action buttons.
 * **Zero Host Clutter:** No persistent background daemons, services, or Electron bloat. When idle, CPU and RAM usage is strictly 0%.
 
@@ -114,15 +114,15 @@ After running `./install.sh`, you can bind Soundbite to global hotkeys in Fedora
 4. Click on each action and assign your preferred global shortcut:
    | Action | Recommended Shortcut | Description |
    | :--- | :--- | :--- |
-   | **Soundbite: Desktop Audio** | `Meta + Shift + A` | Captures YouTube, Spotify, browser sound, calls |
+   | **Soundbite: Desktop Audio** | `Meta + Shift + C` | Captures YouTube, Spotify, browser sound, calls |
    | **Soundbite: Microphone** | `Meta + Shift + V` | Captures quick voice memos and spoken thoughts |
    | **Soundbite: Desktop + Mic** | `Meta + Shift + B` | Captures both system audio and your microphone |
 5. Click **Apply** in the bottom right corner of System Settings.
 
 > **How it works in practice:**
-> 1. Press `Meta + Shift + A` $\rightarrow$ You hear a subtle shutter click and a "Recording" notification stays on screen until you stop.
+> 1. Press `Meta + Shift + C` $\rightarrow$ You hear a subtle shutter click and a "Recording" notification stays on screen until you stop.
 > 2. Let the audio play (or speak into your mic).
-> 3. Press `Meta + Shift + A` again $\rightarrow$ A chime sounds, the MP3 is saved in `~/Music/AudioCaptures/`, and the file path is copied to your clipboard ready to paste!
+> 3. Press `Meta + Shift + C` again $\rightarrow$ A chime sounds, the MP3 is saved in `~/Music/AudioCaptures/`, and the clip is copied to your clipboard ready to paste!
 
 ---
 
@@ -186,8 +186,11 @@ PLAY_SOUNDS="true"
 # Desktop notifications (true / false)
 SEND_NOTIFICATIONS="true"
 
-# Copy file path to Wayland clipboard automatically (true / false)
+# Copy the saved clip to the Wayland clipboard automatically (true / false)
 COPY_TO_CLIPBOARD="true"
+
+# What to copy: "file" (paste the audio file itself, default) or "path" (plain path text)
+CLIPBOARD_MODE="file"
 EOF
 ```
 
@@ -219,11 +222,11 @@ If you require studio-grade lossless capture:
   AUDIO_FORMAT="wav"
   ```
 
-### 4. Changing Clipboard Behavior (File Object vs. Path String)
-* **Default (`text/plain`):** Copies the path string (`/home/.../Soundbite_...mp3`), ideal for terminals and bash scripts.
-* **File Object Mode (`text/uri-list`):** If you prefer pressing `Ctrl + V` in file managers (Dolphin) or chat apps (Discord/Slack) to paste the actual file instead of its path, replace the `wl-copy` line in the "Clipboard copy" block of `bin/soundbite` (then run `./install.sh` again):
+### 4. Changing Clipboard Behavior (File vs. Path String)
+* **Default (`CLIPBOARD_MODE="file"`):** Copies the clip the way a file manager does (`text/uri-list`). Pressing `Ctrl + V` in Dolphin, a chat app, or an email draft pastes the actual audio file. Only a reference is placed on the clipboard; the audio is read from disk at the moment you paste, so clip length does not affect memory use. Programs that only accept text receive the `file://` address of the clip.
+* **Path mode (`CLIPBOARD_MODE="path"`):** Copies the plain path string (`/home/.../Soundbite_...mp3`), ideal for terminals and bash scripts. Set it in `~/.config/soundbite/config.env`:
   ```bash
-  printf "file://%s\r\n" "$OUTFILE" | wl-copy -t text/uri-list 2>/dev/null || true
+  CLIPBOARD_MODE="path"
   ```
 
 ### 5. Modifying Shortcut Definitions
@@ -264,5 +267,6 @@ If you modify these files, run `./install.sh` again to update your desktop syste
 | **Clipboard path not copied** | Wayland compositor or `wl-clipboard` issue | Verify `wl-paste` outputs the path; check if `wl-clipboard` package is installed. |
 | **Recording stuck in background** | Process was orphaned or subshell killed | Run `soundbite stop` or `soundbite cancel` to cleanly reset state. |
 | **"Soundbite Failed" notification** | `ffmpeg` could not start or wrote no audio | Read the reason in the notification, or see `$XDG_RUNTIME_DIR/soundbite/ffmpeg.log`. |
+| **Recording works but no "Saved" popup** | Do Not Disturb is on, which hides normal notifications | The clip is still saved and copied. Turn off Do Not Disturb, or check the notification history. |
 | **Shortcut does nothing** | Installed copy is missing or outdated | Run `./install.sh` again from this repository. |
 | **Audio shutter sound missing** | `libcanberra-gtk3` sound theme not found | Run `sudo dnf install libcanberra-gtk3 sound-theme-freedesktop`. |
