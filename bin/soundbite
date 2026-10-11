@@ -36,8 +36,16 @@ SEND_NOTIFICATIONS="${SEND_NOTIFICATIONS:-true}"
 COPY_TO_CLIPBOARD="${COPY_TO_CLIPBOARD:-true}"
 
 RUNTIME_DIR="${XDG_RUNTIME_DIR:-/tmp}/soundbite"
-mkdir -p "$RUNTIME_DIR"
+mkdir -p -m 700 "$RUNTIME_DIR"
 STATE_FILE="$RUNTIME_DIR/recording.state"
+LOCK_FILE="$RUNTIME_DIR/lock"
+LOG_FILE="$RUNTIME_DIR/ffmpeg.log"
+
+# Serialize invocations so a double-pressed hotkey cannot start two recordings.
+# flock -o keeps the lock out of the children, so ffmpeg does not hold it.
+if [[ "${1:-toggle}" != "status" && -z "$SOUNDBITE_LOCKED" ]] && command -v flock &>/dev/null; then
+    SOUNDBITE_LOCKED=1 exec flock -o -w 5 "$LOCK_FILE" "${BASH_SOURCE[0]}" "$@"
+fi
 
 play_cue() {
     local sound_name="$1"
@@ -57,6 +65,12 @@ notify() {
     fi
 }
 
+# Report an error on stderr and as a notification (hotkey runs have no terminal)
+fail() {
+    echo "$1" >&2
+    notify "$APP_NAME Failed" "$1" "dialog-error" 5000
+}
+
 format_duration() {
     local seconds="$1"
     local mins=$((seconds / 60))
@@ -64,31 +78,40 @@ format_duration() {
     printf "%02d:%02d" "$mins" "$secs"
 }
 
+load_state() {
+    PID="" MODE="" LABEL="" OUTFILE="" START_TIME=""
+    [[ -f "$STATE_FILE" ]] || return 1
+    # shellcheck source=/dev/null
+    source "$STATE_FILE"
+}
+
+# True only if the saved PID is alive and is still our ffmpeg (guards PID reuse)
+pid_is_recorder() {
+    [[ -n "$PID" ]] && kill -0 "$PID" 2>/dev/null \
+        && [[ "$(cat "/proc/$PID/comm" 2>/dev/null)" == "ffmpeg" ]]
+}
+
 is_active() {
-    if [[ -f "$STATE_FILE" ]]; then
-        # shellcheck source=/dev/null
-        source "$STATE_FILE"
-        if [[ -n "$PID" ]] && kill -0 "$PID" 2>/dev/null; then
-            return 0
-        fi
-    fi
-    return 1
+    load_state && pid_is_recorder
+}
+
+# Wait up to $1 tenths of a second for the recorder to exit
+wait_for_exit() {
+    local ticks="$1"
+    while pid_is_recorder && (( ticks > 0 )); do
+        sleep 0.1
+        ticks=$((ticks - 1))
+    done
+    ! pid_is_recorder
 }
 
 start_recording() {
     local mode="${1:-desktop}"
 
     if is_active; then
-        echo "A recording is already in progress (PID: $PID, Mode: $MODE)."
+        fail "A recording is already in progress (PID: $PID, Mode: $MODE)."
         return 1
     fi
-
-    # Ensure output directory exists
-    mkdir -p "$CAPTURE_DIR"
-
-    local timestamp
-    timestamp="$(date +"%Y-%m-%d_%H-%M-%S")"
-    local outfile="$CAPTURE_DIR/${FILE_PREFIX}_${timestamp}_${mode}.${AUDIO_FORMAT}"
 
     local input_args=()
     local label=""
@@ -104,15 +127,16 @@ start_recording() {
             ;;
         both)
             label="Desktop + Microphone"
+            # normalize=0 keeps both inputs at full volume; alimiter prevents clipping
             input_args=(
                 -f pulse -i "@DEFAULT_SINK@.monitor"
                 -f pulse -i "@DEFAULT_SOURCE@"
-                -filter_complex "amix=inputs=2:duration=longest"
+                -filter_complex "amix=inputs=2:duration=longest:normalize=0,alimiter=limit=0.95"
             )
             ;;
         *)
-            echo "Unknown mode: $mode. Use desktop, mic, or both."
-            exit 1
+            fail "Unknown mode: $mode. Use desktop, mic, or both."
+            return 1
             ;;
     esac
 
@@ -130,61 +154,92 @@ start_recording() {
         opus|ogg)
             codec_args=(-c:a libopus -b:a "$AUDIO_BITRATE")
             ;;
+        m4a|aac)
+            codec_args=(-c:a aac -b:a "$AUDIO_BITRATE")
+            ;;
         *)
-            codec_args=(-c:a libmp3lame -b:a "$AUDIO_BITRATE")
+            fail "Unsupported AUDIO_FORMAT: $AUDIO_FORMAT. Use mp3, wav, flac, opus, ogg, m4a, or aac."
+            return 1
             ;;
     esac
+
+    # Ensure output directory exists
+    if ! mkdir -p "$CAPTURE_DIR"; then
+        fail "Cannot create capture folder: $CAPTURE_DIR"
+        return 1
+    fi
+
+    local timestamp
+    timestamp="$(date +"%Y-%m-%d_%H-%M-%S")"
+    local outfile="$CAPTURE_DIR/${FILE_PREFIX}_${timestamp}_${mode}.${AUDIO_FORMAT}"
+
+    # Play the start cue before capturing, otherwise the sink monitor records it
+    if [[ "$mode" != "mic" && "$PLAY_SOUNDS" == "true" ]] && command -v canberra-gtk-play &>/dev/null; then
+        timeout 1 canberra-gtk-play -i camera-shutter 2>/dev/null || true
+    fi
 
     # Launch ffmpeg in background
     nohup ffmpeg -nostdin -loglevel error -y \
         "${input_args[@]}" \
         "${codec_args[@]}" \
-        "$outfile" </dev/null >/dev/null 2>&1 &
+        "$outfile" </dev/null >/dev/null 2>"$LOG_FILE" &
 
     local ffmpeg_pid=$!
 
-    # Save state
-    cat <<EOF > "$STATE_FILE"
-PID=$ffmpeg_pid
-MODE=$mode
-LABEL="$label"
-OUTFILE="$outfile"
-START_TIME=$(date +%s)
-EOF
+    # Catch an ffmpeg that died on startup (missing device, bad codec, ...)
+    sleep 0.3
+    if ! kill -0 "$ffmpeg_pid" 2>/dev/null; then
+        rm -f "$outfile"
+        fail "Recording could not start: $(tail -n 1 "$LOG_FILE" 2>/dev/null)"
+        return 1
+    fi
 
-    play_cue "camera-shutter"
+    # Save state (%q-quoted because the file is sourced back)
+    {
+        printf 'PID=%q\n' "$ffmpeg_pid"
+        printf 'MODE=%q\n' "$mode"
+        printf 'LABEL=%q\n' "$label"
+        printf 'OUTFILE=%q\n' "$outfile"
+        printf 'START_TIME=%q\n' "$(date +%s)"
+    } > "$STATE_FILE"
+
+    [[ "$mode" == "mic" ]] && play_cue "camera-shutter"
     notify "🔴 $APP_NAME Started" "Capturing: $label\nPress shortcut again to finish." "media-record" 3000
     echo "Started recording [$mode] -> $outfile (PID: $ffmpeg_pid)"
 }
 
 stop_recording() {
-    if ! is_active; then
+    if ! load_state; then
         echo "No active recording to stop."
-        rm -f "$STATE_FILE"
         return 0
     fi
 
-    # Read state
-    # shellcheck source=/dev/null
-    source "$STATE_FILE"
+    local interrupted=""
+    if pid_is_recorder; then
+        # Stop ffmpeg cleanly via SIGINT so headers/trailers are written
+        kill -INT "$PID" 2>/dev/null || true
 
-    # Stop ffmpeg cleanly via SIGINT so headers/trailers are written
-    kill -INT "$PID" 2>/dev/null || true
-
-    # Wait briefly for ffmpeg to exit
-    local timeout=50
-    while kill -0 "$PID" 2>/dev/null && (( timeout > 0 )); do
-        sleep 0.05
-        (( timeout-- ))
-    done
+        # Escalate if it does not finish, so no recorder is ever left behind
+        if ! wait_for_exit 50; then
+            kill -TERM "$PID" 2>/dev/null || true
+            if ! wait_for_exit 10; then
+                kill -KILL "$PID" 2>/dev/null || true
+                wait_for_exit 10 || true
+            fi
+            interrupted=" It had to be force-stopped, so the file may be incomplete."
+        fi
+    else
+        # ffmpeg exited on its own (device removed, crash); keep whatever it wrote
+        interrupted=" The recording had already ended on its own."
+    fi
 
     # Remove state file
     rm -f "$STATE_FILE"
 
     # Verify file
     if [[ ! -s "$OUTFILE" ]]; then
-        notify "$APP_NAME Failed" "Output audio file was empty or not created." "dialog-error" 4000
         rm -f "$OUTFILE"
+        fail "Output audio file was empty or not created. $(tail -n 1 "$LOG_FILE" 2>/dev/null)"
         return 1
     fi
 
@@ -195,8 +250,11 @@ stop_recording() {
     duration_formatted="$(format_duration "$duration")"
 
     # Clipboard copy
+    local clipboard_note=""
     if [[ "$COPY_TO_CLIPBOARD" == "true" ]] && command -v wl-copy &>/dev/null; then
-        printf "%s" "$OUTFILE" | wl-copy 2>/dev/null || true
+        if printf "%s" "$OUTFILE" | wl-copy 2>/dev/null; then
+            clipboard_note="\n(Path copied to clipboard)"
+        fi
     fi
 
     play_cue "complete"
@@ -208,7 +266,7 @@ stop_recording() {
                 -i audio-headphones \
                 -t 8000 \
                 "✅ $APP_NAME Saved ($duration_formatted)" \
-                "$(basename "$OUTFILE")\n(Path copied to clipboard)" \
+                "$(basename "$OUTFILE")$clipboard_note$interrupted" \
                 -A "open=Open Folder" \
                 -A "play=Play Audio" 2>/dev/null || true)
 
@@ -220,20 +278,18 @@ stop_recording() {
         ) &
     fi
 
-    echo "Saved: $OUTFILE ($duration_formatted)"
+    echo "Saved: $OUTFILE ($duration_formatted)$interrupted"
 }
 
 cancel_recording() {
-    if ! is_active; then
+    if ! load_state; then
         echo "No active recording to cancel."
-        rm -f "$STATE_FILE"
         return 0
     fi
 
-    # shellcheck source=/dev/null
-    source "$STATE_FILE"
-
-    kill -KILL "$PID" 2>/dev/null || true
+    if pid_is_recorder; then
+        kill -KILL "$PID" 2>/dev/null || true
+    fi
     rm -f "$STATE_FILE"
     rm -f "$OUTFILE"
 
@@ -244,7 +300,9 @@ cancel_recording() {
 
 toggle_recording() {
     local target_mode="${1:-desktop}"
-    if is_active; then
+    # A leftover state file means a recording was started: finish it, even if
+    # ffmpeg has since died, rather than silently starting a new one.
+    if [[ -f "$STATE_FILE" ]]; then
         stop_recording
     else
         start_recording "$target_mode"
@@ -253,8 +311,6 @@ toggle_recording() {
 
 show_status() {
     if is_active; then
-        # shellcheck source=/dev/null
-        source "$STATE_FILE"
         local current_time
         current_time="$(date +%s)"
         local elapsed=$(( current_time - START_TIME ))

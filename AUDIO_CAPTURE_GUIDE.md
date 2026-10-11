@@ -68,7 +68,7 @@ To trigger recording instantly with global hotkeys:
 This tool interfaces dynamically with PipeWire:
 * **Desktop Audio (`desktop`):** Uses `@DEFAULT_SINK@.monitor`. When you switch from laptop speakers to USB headphones or Bluetooth, PipeWire automatically routes the active output to the capture stream without reconfiguration.
 * **Microphone (`mic`):** Uses `@DEFAULT_SOURCE@`. Always routes your active system microphone.
-* **Mixed Audio (`both`):** Captures `@DEFAULT_SINK@.monitor` and `@DEFAULT_SOURCE@` in parallel, passing them through `ffmpeg`'s `amix=inputs=2:duration=longest` filter to generate a single stereo audio track.
+* **Mixed Audio (`both`):** Captures `@DEFAULT_SINK@.monitor` and `@DEFAULT_SOURCE@` in parallel, passing them through `ffmpeg`'s `amix=inputs=2:duration=longest:normalize=0` filter and a limiter to generate a single stereo audio track.
 
 ---
 
@@ -85,7 +85,7 @@ AUDIO_CAPTURE_DIR="$HOME/Music/AudioCaptures"
 # Filename prefix (default: Soundbite)
 AUDIO_FILE_PREFIX="Soundbite"
 
-# Audio format: mp3 (default), wav, flac, opus
+# Audio format: mp3 (default), wav, flac, opus, ogg, m4a, aac
 AUDIO_FORMAT="mp3"
 
 # Bitrate for compressed formats
@@ -104,7 +104,7 @@ EOF
 
 | Issue | Cause | Solution |
 | :--- | :--- | :--- |
-| Recording doesn't start | `ffmpeg` or `pactl` not found | Ensure PipeWire and ffmpeg are installed on host (`which ffmpeg pactl`). |
+| Recording doesn't start | `ffmpeg` missing or it failed to open the audio device | Read the reason in the failure notification, or see `$XDG_RUNTIME_DIR/soundbite/ffmpeg.log`. |
 | No desktop audio heard in clip | System audio was muted during capture | Ensure media is playing through the active default sink (`wpctl status`). |
 | Clipboard path not pasted | Wayland clipboard manager issue | Check `wl-paste` in a terminal to confirm the path was copied. |
 | Stray recording stuck in background | Unexpected reboot or kill | Run `soundbite stop` or `soundbite cancel`. |

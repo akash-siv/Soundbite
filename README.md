@@ -82,15 +82,21 @@ sudo dnf install -y ffmpeg pipewire-pulseaudio wl-clipboard libnotify libcanberr
 Run the automated installer script included in this repository:
 
 ```bash
-cd "/mnt/storage/03-Projects/13 Audio Capture"
+# From the root of this repository
 ./install.sh
+
+# Or choose a different install folder
+./install.sh "$HOME/Apps/Soundbite"
 ```
 
 ### What the installer does:
-1. Verifies that all required system tools (`ffmpeg`, `pactl`, `wl-copy`, `notify-send`) are installed on your Fedora system.
-2. Creates a symlink from `bin/soundbite` to `~/.local/bin/soundbite` (and maintains `~/.local/bin/audio-capture` as a compatibility alias).
-3. Installs KDE application entries into `~/.local/share/applications/` so they appear in your Application Launcher and KDE Shortcuts manager.
-4. Refreshes the desktop application database via `update-desktop-database`.
+1. Verifies that `ffmpeg` is installed, and reports which optional tools (`wl-copy`, `notify-send`, `canberra-gtk-play`, `flock`) are available.
+2. Copies the application into the install folder (default: `~/Apps-Appimage/Soundbite/`). The installed copy does not depend on this repository, so the repository can be moved or archived afterwards.
+3. Creates a symlink from `~/.local/bin/soundbite` to the installed copy (and maintains `~/.local/bin/audio-capture` as a compatibility alias).
+4. Installs KDE application entries into `~/.local/share/applications/`, with `Exec=` pointing at the installed copy by absolute path, and removes the legacy `audio-capture-*.desktop` entries.
+5. Refreshes the desktop application database via `update-desktop-database`.
+
+After changing anything in this repository, run `./install.sh` again to update the installed copy.
 
 ---
 
@@ -167,7 +173,7 @@ AUDIO_CAPTURE_DIR="$HOME/Music/AudioCaptures"
 # Filename prefix (default: Soundbite)
 AUDIO_FILE_PREFIX="Soundbite"
 
-# Output audio format: mp3 (default), wav, flac, opus, ogg
+# Output audio format: mp3 (default), wav, flac, opus, ogg, m4a, aac
 AUDIO_FORMAT="mp3"
 
 # Audio bitrate for compressed formats (e.g. 192k, 256k, 320k)
@@ -214,7 +220,7 @@ If you require studio-grade lossless capture:
 
 ### 4. Changing Clipboard Behavior (File Object vs. Path String)
 * **Default (`text/plain`):** Copies the path string (`/home/.../Soundbite_...mp3`), ideal for terminals and bash scripts.
-* **File Object Mode (`text/uri-list`):** If you prefer pressing `Ctrl + V` in file managers (Dolphin) or chat apps (Discord/Slack) to paste the actual file instead of its path, edit line 191 in `bin/soundbite`:
+* **File Object Mode (`text/uri-list`):** If you prefer pressing `Ctrl + V` in file managers (Dolphin) or chat apps (Discord/Slack) to paste the actual file instead of its path, replace the `wl-copy` line in the "Clipboard copy" block of `bin/soundbite` (then run `./install.sh` again):
   ```bash
   printf "file://%s\r\n" "$OUTFILE" | wl-copy -t text/uri-list 2>/dev/null || true
   ```
@@ -236,7 +242,7 @@ If you modify these files, run `./install.sh` again to update your desktop syste
 ├── AUDIO_CAPTURE_GUIDE.md         ← User guide, shortcuts reference & troubleshooting
 ├── Audio Capture Design.md        ← Technical architecture, PipeWire routing & benchmarks
 ├── LICENSE                        ← MIT License
-├── install.sh                     ← Fedora installer script (symlinks binaries & shortcuts)
+├── install.sh                     ← Fedora installer script (copies the app, links the binary & shortcuts)
 ├── bin/
 │   ├── soundbite                  ← Main executable controller script
 │   └── audio-capture              ← Backwards-compatible symlink to soundbite
@@ -256,4 +262,6 @@ If you modify these files, run `./install.sh` again to update your desktop syste
 | **No audio recorded (silence)** | Default audio device was muted or inactive | Ensure media is playing and verify active sink via `wpctl status`. |
 | **Clipboard path not copied** | Wayland compositor or `wl-clipboard` issue | Verify `wl-paste` outputs the path; check if `wl-clipboard` package is installed. |
 | **Recording stuck in background** | Process was orphaned or subshell killed | Run `soundbite stop` or `soundbite cancel` to cleanly reset state. |
+| **"Soundbite Failed" notification** | `ffmpeg` could not start or wrote no audio | Read the reason in the notification, or see `$XDG_RUNTIME_DIR/soundbite/ffmpeg.log`. |
+| **Shortcut does nothing** | Installed copy is missing or outdated | Run `./install.sh` again from this repository. |
 | **Audio shutter sound missing** | `libcanberra-gtk3` sound theme not found | Run `sudo dnf install libcanberra-gtk3 sound-theme-freedesktop`. |

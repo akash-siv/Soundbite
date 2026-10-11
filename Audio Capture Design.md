@@ -33,7 +33,7 @@ On modern desktop environments:
 Direct tests confirmed dynamic routing compatibility on Fedora 43 (PipeWire 1.6.8, FFmpeg 8.1.2):
 - **Desktop Loopback:** Target `@DEFAULT_SINK@.monitor` captures all system outputs (YouTube, media players, calls).
 - **Microphone Stream:** Target `@DEFAULT_SOURCE@` captures the primary input microphone.
-- **Mixed Capture:** FFmpeg `amix=inputs=2:duration=longest` combines monitor + mic into a synchronized stereo mix.
+- **Mixed Capture:** FFmpeg `amix=inputs=2:duration=longest:normalize=0` (followed by a limiter) combines monitor + mic into a synchronized stereo mix.
 - **Dynamic Adaptability:** Using `@DEFAULT_SINK@.monitor` and `@DEFAULT_SOURCE@` ensures that unplugging or changing audio devices (Bluetooth, USB headsets) requires no script changes.
 
 ### 2.3 Process Management
