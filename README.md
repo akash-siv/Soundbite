@@ -1,6 +1,6 @@
 # Soundbite (13 Audio Capture)
 
-> **OS Platform Target:** Designed and tested exclusively on **Fedora Linux** (Fedora 40/41+ with PipeWire, KDE Plasma 6, and Wayland).
+> **OS Platform Target:** Designed and tested exclusively on **Fedora Linux** (tested on Fedora 43 and 44 with PipeWire, KDE Plasma 6, and Wayland).
 
 **Soundbite** is a lightweight, zero-daemon, hotkey-driven audio snippet capture tool for Fedora Linux.
 
@@ -52,7 +52,8 @@ In modern desktop workflows, taking a screenshot or copying text takes less than
 * **Tactile Audio & Visual Feedback:**
   * Plays a `camera-shutter` audio cue when recording begins.
   * Plays a `complete` chime cue when recording stops.
-  * Displays a non-intrusive desktop notification with interactive **"Open Folder"** and **"Play Audio"** action buttons.
+  * Shows a persistent **"Recording"** notification for as long as a capture is running, so a live microphone is never forgotten.
+  * Replaces it on stop with a notification offering interactive **"Open Folder"** and **"Play Audio"** action buttons.
 * **Zero Host Clutter:** No persistent background daemons, services, or Electron bloat. When idle, CPU and RAM usage is strictly 0%.
 
 ---
@@ -60,7 +61,7 @@ In modern desktop workflows, taking a screenshot or copying text takes less than
 ## Platform Compatibility & Requirements
 
 > [!IMPORTANT]
-> **Fedora Linux Only:** This application is specifically designed for and tested on **Fedora Linux** (tested on Fedora 40/41+ running PipeWire audio server and KDE Plasma 6 under Wayland). Other distributions (Ubuntu, Arch, etc.) or display servers (X11) may require manual adjustments for audio sink names and clipboard utilities.
+> **Fedora Linux Only:** This application is specifically designed for and tested on **Fedora Linux** (tested on Fedora 43 and 44 running PipeWire audio server and KDE Plasma 6 under Wayland). Other distributions (Ubuntu, Arch, etc.) or display servers (X11) may require manual adjustments for audio sink names and clipboard utilities.
 
 ### System Dependencies
 Soundbite relies on Fedora's standard multimedia and desktop tools:
@@ -119,7 +120,7 @@ After running `./install.sh`, you can bind Soundbite to global hotkeys in Fedora
 5. Click **Apply** in the bottom right corner of System Settings.
 
 > **How it works in practice:**
-> 1. Press `Meta + Shift + A` $\rightarrow$ You hear a subtle shutter click and see a notification confirming recording started.
+> 1. Press `Meta + Shift + A` $\rightarrow$ You hear a subtle shutter click and a "Recording" notification stays on screen until you stop.
 > 2. Let the audio play (or speak into your mic).
 > 3. Press `Meta + Shift + A` again $\rightarrow$ A chime sounds, the MP3 is saved in `~/Music/AudioCaptures/`, and the file path is copied to your clipboard ready to paste!
 

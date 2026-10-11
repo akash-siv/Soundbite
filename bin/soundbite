@@ -59,16 +59,19 @@ notify() {
     local body="$2"
     local icon="${3:-media-record}"
     local timeout="${4:-3000}"
+    local replace_id="$5"
 
     if [[ "$SEND_NOTIFICATIONS" == "true" ]] && command -v notify-send &>/dev/null; then
-        notify-send -a "$APP_NAME" -i "$icon" -t "$timeout" "$title" "$body" 2>/dev/null &
+        notify-send -a "$APP_NAME" -i "$icon" -t "$timeout" ${replace_id:+-r "$replace_id"} \
+            "$title" "$body" 2>/dev/null &
     fi
 }
 
-# Report an error on stderr and as a notification (hotkey runs have no terminal)
+# Report an error on stderr and as a notification (hotkey runs have no terminal).
+# An optional notification ID replaces the persistent recording indicator.
 fail() {
     echo "$1" >&2
-    notify "$APP_NAME Failed" "$1" "dialog-error" 5000
+    notify "$APP_NAME Failed" "$1" "dialog-error" 5000 "$2"
 }
 
 format_duration() {
@@ -79,7 +82,7 @@ format_duration() {
 }
 
 load_state() {
-    PID="" MODE="" LABEL="" OUTFILE="" START_TIME=""
+    PID="" MODE="" LABEL="" OUTFILE="" START_TIME="" NOTIFY_ID=""
     [[ -f "$STATE_FILE" ]] || return 1
     # shellcheck source=/dev/null
     source "$STATE_FILE"
@@ -194,6 +197,14 @@ start_recording() {
         return 1
     fi
 
+    # Persistent indicator: stays on screen until stop/cancel replaces it
+    local notify_id=""
+    if [[ "$SEND_NOTIFICATIONS" == "true" ]] && command -v notify-send &>/dev/null; then
+        notify_id="$(notify-send -a "$APP_NAME" -i media-record -t 0 -p \
+            "🔴 $APP_NAME Recording" \
+            "Capturing: $label (started $(date +%H:%M))\nPress shortcut again to finish." 2>/dev/null || true)"
+    fi
+
     # Save state (%q-quoted because the file is sourced back)
     {
         printf 'PID=%q\n' "$ffmpeg_pid"
@@ -201,10 +212,10 @@ start_recording() {
         printf 'LABEL=%q\n' "$label"
         printf 'OUTFILE=%q\n' "$outfile"
         printf 'START_TIME=%q\n' "$(date +%s)"
+        printf 'NOTIFY_ID=%q\n' "$notify_id"
     } > "$STATE_FILE"
 
     [[ "$mode" == "mic" ]] && play_cue "camera-shutter"
-    notify "🔴 $APP_NAME Started" "Capturing: $label\nPress shortcut again to finish." "media-record" 3000
     echo "Started recording [$mode] -> $outfile (PID: $ffmpeg_pid)"
 }
 
@@ -239,7 +250,7 @@ stop_recording() {
     # Verify file
     if [[ ! -s "$OUTFILE" ]]; then
         rm -f "$OUTFILE"
-        fail "Output audio file was empty or not created. $(tail -n 1 "$LOG_FILE" 2>/dev/null)"
+        fail "Output audio file was empty or not created. $(tail -n 1 "$LOG_FILE" 2>/dev/null)" "$NOTIFY_ID"
         return 1
     fi
 
@@ -264,7 +275,7 @@ stop_recording() {
         (
             ACTION=$(notify-send -a "$APP_NAME" \
                 -i audio-headphones \
-                -t 8000 \
+                -t 8000 ${NOTIFY_ID:+-r "$NOTIFY_ID"} \
                 "✅ $APP_NAME Saved ($duration_formatted)" \
                 "$(basename "$OUTFILE")$clipboard_note$interrupted" \
                 -A "open=Open Folder" \
@@ -294,7 +305,7 @@ cancel_recording() {
     rm -f "$OUTFILE"
 
     play_cue "dialog-warning"
-    notify "$APP_NAME Canceled" "Captured audio was discarded." "edit-delete" 3000
+    notify "$APP_NAME Canceled" "Captured audio was discarded." "edit-delete" 3000 "$NOTIFY_ID"
     echo "Recording canceled and file deleted."
 }
 
